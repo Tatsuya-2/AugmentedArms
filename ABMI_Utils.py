@@ -83,6 +83,11 @@ class BCIBoard:
 		self._sample_queue = queue.Queue(maxsize=1000) #Queue holds up to 4 seconds of data
 		self.minimum_recorded_rows = 5800 #20seconds x250, + 500for baseline x2
 
+		# Optional external queue for tee-ing every sample to a streaming
+		# consumer (e.g. EEGStreamClient). Stays None when no consumer is
+		# attached so the stream worker bypasses the tee path entirely.
+		self._external_stream_queue = None
+
 		self.STREAM_CFG_DEFAULT = dict(gain=6, input_type=0, bias=1, srb2=1, srb1=0)  # reasonable "normal" preset
 		self.IMP_CFG = dict(gain=0, input_type=0, bias=1, srb2=0, srb1=0)            # GUI-like impedance preset
 
@@ -90,6 +95,15 @@ class BCIBoard:
 		self._ch_cfg = [self.STREAM_CFG_DEFAULT.copy() for _ in range(8)]
 		self._ch_last_cfg = [None for _ in range(8)]
 
+
+	def set_external_stream_queue(self, q):
+		"""Attach an external queue.Queue that will receive a copy of every
+		sample produced by the stream() worker. Pass None to detach.
+
+		The tee uses put_nowait with a drop-oldest fallback so a slow
+		consumer can never block the BrainFlow loop.
+		"""
+		self._external_stream_queue = q
 
 	def connect(self):
 		BoardShim.disable_board_logger()
@@ -223,6 +237,19 @@ class BCIBoard:
 							"label": self.stimulus_sound,
 							"seq": self.sequence_id
 						}
+						ext_q = self._external_stream_queue
+						if ext_q is not None:
+							try:
+								ext_q.put_nowait(sample)
+							except queue.Full:
+								try:
+									ext_q.get_nowait()
+								except queue.Empty:
+									pass
+								try:
+									ext_q.put_nowait(sample)
+								except queue.Full:
+									pass
 						if self.recording and self._record_stop_event and not self._record_stop_event.is_set():
 							try:
 								self._sample_queue.put_nowait(sample)
