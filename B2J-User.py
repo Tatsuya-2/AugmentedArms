@@ -1,5 +1,6 @@
 import ABMI_Utils
 import ALS_Utils
+import argparse
 import glob
 import serial
 import pygame
@@ -12,6 +13,8 @@ from serial.tools import list_ports
 from multiprocessing import Process, Queue
 import time
 import random
+
+from DroneMonitorClient import DroneMonitorClient
 
 #---------------------------------------------
 # ---- OGINO IMPLEMENTTED----
@@ -92,6 +95,7 @@ userID = ABMI_Utils.getUserID()
 
 piezo = ALS_Utils.PiezoSensor(pin = 21, cooldown=1)
 state = "idle"
+drone_monitor_client = None
 title_surface = None
 state_surface = None
 last_text_draw = 0
@@ -248,7 +252,7 @@ def handlePredicting():
 
 def handleTriggering():
 
-	global state, sound_map, testing_path
+	global state, sound_map, testing_path, drone_monitor_client
 
 	#Ambient activity is basically predicting:
 	#send a single message that includes the trigger keyword and a direction
@@ -258,6 +262,10 @@ def handleTriggering():
 		ABMI_Utils.play_single_sound(sound_map.get(prediction_choice, "Sounds/prediction_unknown.wav"))
 		#send Trigger
 		sendToM5(m5_port, baud, f"T,{prediction_choice}/n")
+		# Forward the confirmed choice to drone_monitor (raw "1"/"2"/"3" over WebSocket).
+		# Send is best-effort and non-blocking; failures are logged by the client.
+		if drone_monitor_client is not None and prediction_choice in (1, 2, 3):
+			drone_monitor_client.send_signal(str(prediction_choice))
 		ABMI_Utils.deleteTestingFiles(testing_path)
 		state = "idle"
 		send_led_all_off()
@@ -296,6 +304,22 @@ def draw_status_text(force=False):
 
 if __name__ == '__main__':
 
+	# CLI args for drone_monitor WebSocket connection.
+	# Default behavior is M5-only (no WebSocket); pass --bmi-drone-host to
+	# enable forwarding confirmed predictions to a drone_monitor instance.
+	parser = argparse.ArgumentParser(
+		description="B2J BCI user runtime. Default behavior matches the "
+		            "original M5-only setup. Pass --bmi-drone-host to also "
+		            "forward confirmed predictions to a drone_monitor via WebSocket."
+	)
+	parser.add_argument("--bmi-drone-host", default=None,
+	                    help="drone_monitor host/IP. When omitted, WebSocket "
+	                         "forwarding is disabled (M5 serial only).")
+	parser.add_argument("--bmi-drone-port", type=int, default=9090,
+	                    help="drone_monitor WebSocket port (default: 9090). "
+	                         "Only used when --bmi-drone-host is set.")
+	args = parser.parse_args()
+
 	#Window at top left
 	os.environ['SDL_VIDEO_WINDOW_POS'] = "0,0"
 
@@ -304,6 +328,12 @@ if __name__ == '__main__':
 	pygame.mixer.init()
 	screen = pygame.display.set_mode((render_w, render_h), pygame.NOFRAME)
 	pygame.display.set_caption("BMI Trainer")
+
+	# Start drone_monitor WebSocket client only when --bmi-drone-host is given.
+	# Default (no flag) preserves the original M5-only behavior.
+	if args.bmi_drone_host:
+		drone_monitor_client = DroneMonitorClient(args.bmi_drone_host, args.bmi_drone_port)
+		drone_monitor_client.start()
 
 	#Start Latency Timer
 	ABMI_Utils.set_latency_timer(1)
