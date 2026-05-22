@@ -15,7 +15,6 @@ import time
 import random
 
 from DroneMonitorClient import DroneMonitorClient
-from EEGStreamClient import EEGStreamClient
 
 #---------------------------------------------
 # ---- OGINO IMPLEMENTTED----
@@ -319,16 +318,6 @@ if __name__ == '__main__':
 	parser.add_argument("--bmi-drone-port", type=int, default=9090,
 	                    help="drone_monitor WebSocket port (default: 9090). "
 	                         "Only used when --bmi-drone-host is set.")
-	parser.add_argument("--eeg-stream-host", default=None,
-	                    help="Streaming PC host/IP that runs the EEG WebSocket "
-	                         "viewer. When omitted, raw EEG streaming is "
-	                         "disabled (existing behavior).")
-	parser.add_argument("--eeg-stream-port", type=int, default=9091,
-	                    help="EEG viewer WebSocket port (default: 9091). "
-	                         "Only used when --eeg-stream-host is set.")
-	parser.add_argument("--eeg-batch-size", type=int, default=25,
-	                    help="Number of EEG samples per WebSocket frame "
-	                         "(default: 25 = 100 ms at 250 Hz).")
 	args = parser.parse_args()
 
 	#Window at top left
@@ -348,22 +337,7 @@ if __name__ == '__main__':
 
 	#Start Latency Timer
 	ABMI_Utils.set_latency_timer(1)
-
-	# Start EEG raw-stream WebSocket client only when --eeg-stream-host is
-	# given. Default (no flag) preserves the original behavior — no extra
-	# thread, no external queue, no streaming.
-	if args.eeg_stream_host:
-		eeg_stream_client = EEGStreamClient(
-			args.eeg_stream_host,
-			args.eeg_stream_port,
-			user_id=userID,
-			sample_rate_hz=int(board.fs),
-			channels=len(board.channels),
-			batch_size=args.eeg_batch_size,
-		)
-		board.set_external_stream_queue(eeg_stream_client.input_queue)
-		eeg_stream_client.start()
-
+	
 	#Connect to BCI
 	board.connect()
 	board.stream()
