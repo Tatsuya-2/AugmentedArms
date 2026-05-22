@@ -29,7 +29,7 @@ GREEN = "\033[92m"
 YELLOW= "\033[93m"
 RESET = "\033[0m"
 
-ESP_VID = 0x1a86 
+ESP_VID = 0x1a86
 esp_ser = None #ESP Now Serial Port
 
 def pick_m5_port():
@@ -75,7 +75,7 @@ clock = None
 title_font = None
 state_font = None
 
-board = ABMI_Utils.BCIBoard(port="/dev/ttyUSB0")
+board = ABMI_Utils.BCIBoard(port="/dev/bci_dongle")
 sequence_thread = None
 cancel_event = None
 
@@ -117,7 +117,7 @@ def readRecentLatestTestFile(file_path):
 	return rows[-1]
 
 def sendToM5(port: str, baud: int, message: str):
-	
+
 	if not message:
 		return
 
@@ -134,16 +134,16 @@ def _send_single_command(ch, val):
 	command = f"Ch{ch}-{val}\n"
 	sendToM5(m5_port, baud, f"S,{command}/n")
 
-def send_led_command(ch, val): 
+def send_led_command(ch, val):
     """LEDコントローラーへコマンドを送信"""
     global esp_ser
-    
+
     # チャンネル9が選択されている場合は、1〜8全てに同じコマンドを送る
     if ch == 9:
         print(f"Sending to ALL Channels -> Pattern: {val}{RESET}")
         for i in range(1, 9):
             _send_single_command(i, val)
-            time.sleep(0.01) 
+            time.sleep(0.01)
     else:
         print(f"Sending to Ch: {ch} -> Pattern: {val}{RESET}")
         _send_single_command(ch, val)
@@ -337,7 +337,7 @@ if __name__ == '__main__':
 
 	#Start Latency Timer
 	ABMI_Utils.set_latency_timer(1)
-	
+
 	#Connect to BCI
 	board.connect()
 	board.stream()
@@ -363,10 +363,10 @@ if __name__ == '__main__':
 			handleRecording()
 
 		if state == "predicting":
-			
+
 			handlePredicting()
 
 		if state == "triggering":
 
 			handleTriggering()
-		
+
