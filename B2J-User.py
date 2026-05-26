@@ -9,6 +9,7 @@ import time
 import random
 from datetime import datetime
 from serial.tools import list_ports
+from DroneMonitorClient import DroneMonitorClient
 
 RED = "\033[91m"
 GREEN = "\033[92m"
