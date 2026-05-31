@@ -1,10 +1,23 @@
+import os
+import sys
+
+# --- --mock-hardware bootstrap -------------------------------------------
+# When launched with --mock-hardware, replace the BCI board, piezo, and M5
+# serial link with in-process mocks BEFORE importing them, so the app runs
+# with NO real hardware (no BCI dongle, no piezo GPIO, no M5 serial). This
+# MUST happen before the hardware imports below. Production launches (without
+# the flag) never touch B2J_mocks and behave exactly as before.
+MOCK_HARDWARE = "--mock-hardware" in sys.argv
+if MOCK_HARDWARE:
+	import B2J_mocks
+	B2J_mocks.install()
+
 import ABMI_Utils
 import ALS_Utils
 import argparse
 import glob
 import serial
 import pygame
-import os
 import time
 import random
 from datetime import datetime
@@ -253,11 +266,23 @@ def handleTriggering():
 		# Forward the confirmed choice to drone_monitor
 		if drone_monitor_client is not None and prediction_choice in (1, 2, 3):
 			drone_monitor_client.send_signal(str(prediction_choice))
+			print(f"[B2J-DBG] -> send_signal({prediction_choice!r}) ENQUEUED to drone_monitor")
+		else:
+			print(f"[B2J-DBG] NOT forwarded: client_set={drone_monitor_client is not None} choice={prediction_choice!r} (need client!=None AND choice in 1/2/3)")
 
 		ABMI_Utils.deleteTestingFiles(testing_path)
 
 		state = "idle"
 		send_led_all_off()
+
+
+def _load_font(path, size):
+	# Prefer the bundled Noto font; fall back to pygame's default if the file
+	# is missing (e.g. on a dev machine running --mock-hardware).
+	try:
+		return pygame.font.Font(path, size)
+	except (FileNotFoundError, OSError):
+		return pygame.font.Font(None, size)
 
 
 def draw_status_text(force=False):
@@ -273,11 +298,11 @@ def draw_status_text(force=False):
 		return
 
 	if title_font is None:
-		title_font = pygame.font.Font(notoFont, 48)
+		title_font = _load_font(notoFont, 48)
 		title_surface = title_font.render("B2J User", True, white)
 
 	if state_font is None:
-		state_font = pygame.font.Font(notoFont, 36)
+		state_font = _load_font(notoFont, 36)
 
 	state_surface = state_font.render(state.upper(), True, white)
 
@@ -307,8 +332,10 @@ if __name__ == "__main__":
 
 	parser.add_argument(
 		"--bmi-drone-host",
-		default=None,
-		help="drone_monitor host/IP. When omitted, WebSocket forwarding is disabled."
+		default="",
+		help="drone_monitor host/IP. Empty by default = WebSocket forwarding "
+			 "DISABLED. Pass a host (e.g. --bmi-drone-host 192.168.12.10 = "
+			 "Jetson) to enable forwarding."
 	)
 
 	parser.add_argument(
@@ -318,7 +345,24 @@ if __name__ == "__main__":
 		help="drone_monitor WebSocket port (default: 9090)."
 	)
 
+	parser.add_argument(
+		"--mock-hardware",
+		action="store_true",
+		help="Run WITHOUT real hardware: replace the BCI board, piezo, and M5 "
+			 "serial with in-process mocks. Trigger with the 'b' key; "
+			 "predictions cycle 1->2->3. The drone_monitor WebSocket client "
+			 "still runs for real, so this also exercises drone forwarding. "
+			 "NOT for production use."
+	)
+
 	args = parser.parse_args()
+
+	if args.mock_hardware:
+		print(f"{RED}{'=' * 60}{RESET}")
+		print(f"{RED}  [MOCK HARDWARE]  NO REAL HARDWARE  -  not for production{RESET}")
+		print(f"{RED}  BCI board / piezo / M5 are mocked. Trigger = 'b' key, "
+			  f"ESC to quit.{RESET}")
+		print(f"{RED}{'=' * 60}{RESET}")
 
 	# Window at top left
 	os.environ["SDL_VIDEO_WINDOW_POS"] = "0,0"
